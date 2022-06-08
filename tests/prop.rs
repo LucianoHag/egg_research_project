@@ -90,12 +90,13 @@ fn prove_something(name: &str, start: &str, rewrites: &[Rewrite], goals: &[&str]
     let start_expr: RecExpr<_> = start.parse().unwrap();
     let goal_exprs: Vec<RecExpr<_>> = goals.iter().map(|g| g.parse().unwrap()).collect();
 
-    let egraph = Runner::default()
+    let mut runner = Runner::default()
         .with_iter_limit(20)
         .with_node_limit(5_000)
         .with_expr(&start_expr)
-        .run(rewrites)
-        .egraph;
+        .run(rewrites);
+    runner.print_report();
+    let egraph = runner.egraph;
 
     for (i, (goal_expr, goal_str)) in goal_exprs.iter().zip(goals).enumerate() {
         println!("Trying to prove goal {}: {}", i, goal_str);
@@ -149,6 +150,26 @@ fn prove_chain() {
             "(| (~ x) z)",
             "(-> x z)",
         ],
+    );
+}
+
+#[test]
+fn sample_test(){
+    let _ = env_logger::builder().is_test(true).try_init();
+    let rules = &[
+        double_neg(),
+        double_neg_flip(),
+    ];
+    prove_something(
+        "double_neg",
+        "(~ (~ a))",
+        rules,
+        &[
+            "a",
+            "(~ (~ a))",
+            "(~ (~ (~ (~ a))))",
+            "(~ (~ (~ (~ (~ (~ a))))))"
+        ]
     );
 }
 
