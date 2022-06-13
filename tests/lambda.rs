@@ -127,7 +127,7 @@ fn is_const(v: Var) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
 fn rules() -> Vec<Rewrite<Lambda, LambdaAnalysis>> {
     vec![
         // open term rules
-        rw!("if-true";  "(if  true ?then ?else)" => "?then"),
+        rw!("if-true";  "(if true  ?then ?else)" => "?then"),
         rw!("if-false"; "(if false ?then ?else)" => "?else"),
         rw!("if-elim"; "(if (= (var ?x) ?e) ?then ?else)" => "?else"
             if ConditionEqual::parse("(let ?x ?e ?then)", "(let ?x ?e ?else)")),

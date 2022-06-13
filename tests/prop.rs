@@ -41,7 +41,7 @@ impl Analysis<Prop> for ConstantFold {
                 format!("(-> {} {})", x(a)?, x(b)?).parse().unwrap(),
             )),
         };
-        println!("Make: {:?} -> {:?}", enode, result);
+        // println!("Make: {:?} -> {:?}", enode, result);
         result
     }
 
@@ -82,10 +82,12 @@ rule! {or_true,     "(| ?a true)",         "true"                      }
 rule! {and_true,    "(& ?a true)",         "?a"                     }
 rule! {contrapositive, "(-> ?a ?b)",    "(-> (~ ?b) (~ ?a))"     }
 rule! {lem_imply, "(& (-> ?a ?b) (-> (~ ?a) ?c))", "(| ?b ?c)"}
+rule! {demorgan_and, demorgan_and_flip, "(& (~ ?a) (~ ?b))", "(~ (| ?a ?b))"}
+rule! {demorgan_or, demorgan_or_flip, "(| (~ ?a) (~ ?b))", "(~ (& ?a ?b))"}
+rule! {demorgan_or_extended, "(| (~ ?a) (& (~ ?b) (~ ?c)))", "(~ (& ?a (| ?b ?c)))"}
 
-fn prove_something(name: &str, start: &str, rewrites: &[Rewrite], goals: &[&str]) {
+fn prove_something(start: &str, rewrites: &[Rewrite], goals: &[&str]) -> f64 {
     let _ = env_logger::builder().is_test(true).try_init();
-    println!("Proving {}", name);
 
     let start_expr: RecExpr<_> = start.parse().unwrap();
     let goal_exprs: Vec<RecExpr<_>> = goals.iter().map(|g| g.parse().unwrap()).collect();
@@ -95,40 +97,52 @@ fn prove_something(name: &str, start: &str, rewrites: &[Rewrite], goals: &[&str]
         .with_node_limit(5_000)
         .with_expr(&start_expr)
         .run(rewrites);
-    runner.print_report();
+    let report = runner.report();
+    // runner.print_report();
     let egraph = runner.egraph;
 
     for (i, (goal_expr, goal_str)) in goal_exprs.iter().zip(goals).enumerate() {
-        println!("Trying to prove goal {}: {}", i, goal_str);
+        // println!("Trying to prove goal {}: {}", i, goal_str);
         let equivs = egraph.equivs(&start_expr, goal_expr);
         if equivs.is_empty() {
             panic!("Couldn't prove goal {}: {}", i, goal_str);
         }
     }
+
+    return report.total_time * 1000000_f64;
 }
 
-#[test]
-fn prove_contrapositive() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    let rules = &[def_imply(), def_imply_flip(), double_neg_flip(), comm_or()];
-    prove_something(
-        "contrapositive",
-        "(-> x y)",
-        rules,
-        &[
-            "(-> x y)",
-            "(| (~ x) y)",
-            "(| (~ x) (~ (~ y)))",
-            "(| (~ (~ y)) (~ x))",
-            "(-> (~ y) (~ x))",
-        ],
-    );
+fn run_tests(all_or_implied_rules: &[Rewrite], selected_rules: &[Rewrite], start: &str, goals: &[&str]) {
+    let mut selected_times = Vec::new();
+    let mut all_times = Vec::new();
+    let mut loops = 200;
+    while loops > 0 {
+        // First run the test with the selected rules
+        selected_times.push(prove_something(start, selected_rules, goals));
+
+        // Then run the test with all rules
+        all_times.push(prove_something(start, all_or_implied_rules, goals));
+        loops -= 1;
+    }
+    println!("Times using selected rules:\n{:?}\n", selected_times);
+    println!("Times using all or implied rules:\n{:?}\n", all_times);
 }
 
-#[test]
-fn prove_chain() {
-    let _ = env_logger::builder().is_test(true).try_init();
-    let rules = &[
+fn first_run_all_rules(all_rules: &[Rewrite]) {
+    let selected_rules = &[double_neg(), double_neg_flip()];
+    let start = "(~ (~ a))";
+    let goals = &[
+        "a",
+        "(~ (~ a))",
+        "(~ (~ (~ (~ a))))",
+        "(~ (~ (~ (~ (~ (~ a))))))",
+    ];
+
+    run_tests(all_rules, selected_rules, start, goals);
+}
+
+fn second_run_all_rules(all_rules: &[Rewrite]) {
+    let selected_rules = &[
         // rules needed for contrapositive
         def_imply(),
         def_imply_flip(),
@@ -138,49 +152,145 @@ fn prove_chain() {
         comm_and(),
         lem_imply(),
     ];
-    prove_something(
-        "chain",
-        "(& (-> x y) (-> y z))",
-        rules,
-        &[
-            "(& (-> x y) (-> y z))",
-            "(& (-> (~ y) (~ x)) (-> y z))",
-            "(& (-> y z)         (-> (~ y) (~ x)))",
-            "(| z (~ x))",
-            "(| (~ x) z)",
-            "(-> x z)",
-        ],
-    );
+    let start = "(-> x y)";
+    let goals = &[
+        "(-> x y)",
+        "(| (~ x) y)",
+        "(| (~ x) (~ (~ y)))",
+        "(| (~ (~ y)) (~ x))",
+        "(-> (~ y) (~ x))",
+    ];
+
+    run_tests(all_rules, selected_rules, start, goals);
 }
 
+// Not a valid tests as the two resulting egraphs are different
+fn third_run_all_rules(all_rules: &[Rewrite]) {
+    let selected_rules = &[
+        // rules needed for contrapositive
+        def_imply(),
+        def_imply_flip(),
+        double_neg_flip(),
+        comm_or(),
+        // and some others
+        comm_and(),
+        lem_imply(),
+    ];
+    let start = "(& (-> x y) (-> y z))";
+    let goals = &[
+        "(& (-> x y) (-> y z))",
+        "(& (-> (~ y) (~ x)) (-> y z))",
+        "(& (-> y z)         (-> (~ y) (~ x)))",
+        "(| z (~ x))",
+        "(| (~ x) z)",
+        "(-> x z)",
+    ];
+
+    run_tests(all_rules, selected_rules, start, goals);
+}
+
+fn first_run_implied_rules() {
+    let selected_rules = &[
+        // rules needed for contrapositive
+        def_imply(),
+        def_imply_flip(),
+        double_neg_flip(),
+        comm_or(),
+        // and some others
+        comm_and(),
+        lem_imply(),
+    ];
+    let implied_rules = &[
+        // rules needed for contrapositive
+        def_imply(),
+        def_imply_flip(),
+        double_neg_flip(),
+        comm_or(),
+        // and some others
+        comm_and(),
+        lem_imply(),
+        // add contrapositive rule
+        contrapositive(),
+    ];
+    let start = "(-> x y)";
+    let goals = &[
+        "(-> x y)",
+        "(| (~ x) y)",
+        "(| (~ x) (~ (~ y)))",
+        "(| (~ (~ y)) (~ x))",
+        "(-> (~ y) (~ x))",
+    ];
+
+    run_tests(implied_rules, selected_rules, start, goals);
+}
+
+fn second_run_implied_rules() {
+    // TODO: demorgan 
+    let selected_rules = &[
+        demorgan_and(),
+        demorgan_and_flip(),
+        demorgan_or(),
+        demorgan_or_flip(),
+        dist_and_or(),
+        dist_or_and(),
+    ];
+    let implied_rules = &[
+        demorgan_and(),
+        demorgan_and_flip(),
+        demorgan_or(),
+        demorgan_or_flip(),
+        dist_and_or(),
+        dist_or_and(),
+        demorgan_or_extended(),
+    ];
+
+    let start = "(| (~ a) (& (~ b) (~ c)))";
+    let goals = &[
+        "(~ (| (& a b) (& a c)))",
+        "(~ (& a (| b c)))",
+    ];
+    run_tests(implied_rules, selected_rules, start, goals);
+}
+
+// #[test]
+// fn const_fold() {
+//     let start = "(| (& false true) (& true false))";
+//     let start_expr = start.parse().unwrap();
+//     let end = "false";
+//     let end_expr = end.parse().unwrap();
+//     let mut eg = EGraph::default();
+//     eg.add_expr(&start_expr);
+//     eg.rebuild();
+//     assert!(!eg.equivs(&start_expr, &end_expr).is_empty());
+// }
+
 #[test]
-fn sample_test(){
-    let _ = env_logger::builder().is_test(true).try_init();
-    let rules = &[
+fn selected_tests() {
+    let all_rules = &[
+        def_imply(),
+        def_imply_flip(),
         double_neg(),
         double_neg_flip(),
+        assoc_or(),
+        dist_and_or(),
+        dist_or_and(),
+        comm_or(),
+        comm_and(),
+        lem(),
+        or_true(),
+        and_true(),
+        contrapositive(),
+        lem_imply(),
+        demorgan_and(),
+        demorgan_and_flip(),
+        demorgan_or(),
+        demorgan_or_flip(),
+        demorgan_or_extended()
     ];
-    prove_something(
-        "double_neg",
-        "(~ (~ a))",
-        rules,
-        &[
-            "a",
-            "(~ (~ a))",
-            "(~ (~ (~ (~ a))))",
-            "(~ (~ (~ (~ (~ (~ a))))))"
-        ]
-    );
-}
 
-#[test]
-fn const_fold() {
-    let start = "(| (& false true) (& true false))";
-    let start_expr = start.parse().unwrap();
-    let end = "false";
-    let end_expr = end.parse().unwrap();
-    let mut eg = EGraph::default();
-    eg.add_expr(&start_expr);
-    eg.rebuild();
-    assert!(!eg.equivs(&start_expr, &end_expr).is_empty());
+    // first_run_all_rules(all_rules);
+    // second_run_all_rules(all_rules);
+    // third_run_all_rules(all_rules);
+    // first_run_implied_rules();
+    // second_run_implied_rules();
 }
