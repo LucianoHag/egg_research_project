@@ -1,8 +1,16 @@
 # <img src="doc/egg.svg" alt="egg logo" height="40" align="left"> egg: egraphs good
 
-[![Crates.io](https://img.shields.io/crates/v/egg.svg)](https://crates.io/crates/egg)
-[![Released Docs.rs](https://img.shields.io/crates/v/egg?color=blue&label=docs)](https://docs.rs/egg/)
+<!-- [![Crates.io](https://img.shields.io/crates/v/egg.svg)](https://crates.io/crates/egg) -->
+<!-- [![Released Docs.rs](https://img.shields.io/crates/v/egg?color=blue&label=docs)](https://docs.rs/egg/) -->
 [![Main branch docs](https://img.shields.io/badge/docs-main-blue)](https://egraphs-good.github.io/egg/egg/)
+### Version of this egg fork: v0.8.1
+
+## Running the tests from the article:
+In the file tests/prop.rs, all tests are collected in a function called "selected_tests". To run a particular test in the file, select the tests to be uncommented, while keeping the tests that should not be run commented out. Then run `cargo test selected -- --nocapture` to run the desired tests. 
+
+The output for each test should be two arrays of 200 values, first the run-times for saturating the e-graph using selected rewrite rules, and the second array is the run-times using all rewrite rules or the selected rewrite rules with an inferred rewrite rule added. 
+
+<br>
 
 Are you using egg?
 Please cite using the BibTeX below and
